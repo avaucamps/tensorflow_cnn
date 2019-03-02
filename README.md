@@ -1,3 +1,7 @@
 # CNN with tensorflow
 
-I created a CNN with tensorflow and used tf.data API to feed the dataset to the CNN.
+Simple CNN built with tensorflow for the Kaggle competition [Plant seedlings classification](https://www.kaggle.com/c/plant-seedlings-classification).
+
+The CNN is the following: <br/>
+|Layers|Parameters|
+|:--------:|:------------:|
