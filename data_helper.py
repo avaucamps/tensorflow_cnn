@@ -9,6 +9,7 @@ BASE_PATH = os.path.dirname(os.path.realpath(__file__))
 DATA_PATH = Path(BASE_PATH + '/data')
 TRAIN_PATH = Path(BASE_PATH + '/train')
 VALID_PATH = Path(BASE_PATH + '/valid')
+TEST_PATH = Path(BASE_PATH + '/test')
 
 
 def prepare_files():

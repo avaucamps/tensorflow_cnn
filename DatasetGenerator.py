@@ -34,6 +34,27 @@ class DatasetGenerator:
 
         return image_label_dataset
 
+    
+    def get_test_data(self):
+        self.load_test_filenames()
+
+        image_label_dataset = tf.data.Dataset.from_tensor_slices((self.all_image_paths))
+        image_label_dataset = image_label_dataset.map(self.parse_test_image, num_parallel_calls=4)
+        image_label_dataset = image_label_dataset.batch(self.batch_size)
+        image_label_dataset = image_label_dataset.prefetch(1)
+
+        return image_label_dataset
+
+    
+    def parse_test_image(self, filename):
+        image_string = tf.read_file(filename)
+
+        image = tf.image.decode_jpeg(image_string, channels=self.image_channels)
+        image = tf.image.convert_image_dtype(image, tf.float32)
+        image = tf.image.resize_images(image, self.image_size)
+        
+        return image
+
 
     def parse_image(self, filename, label):
         image_string = tf.read_file(filename)
@@ -53,6 +74,11 @@ class DatasetGenerator:
         image = tf.clip_by_value(image, 0.0, 1.0)
 
         return image, label
+
+
+    def load_test_filenames(self):
+        self.all_image_paths = [str(path) for path in Path(self.data_path).iterdir()]
+        self.image_count = len(self.all_image_paths)
 
 
     def load_images_filenames(self):

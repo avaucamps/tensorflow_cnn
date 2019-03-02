@@ -2,6 +2,8 @@ import os
 from pathlib import Path
 import tensorflow as tf
 from DatasetGenerator import DatasetGenerator
+import numpy as np
+from test_helper import number_of_testing_images, get_labels, create_submission_file
 
 
 class CNN():
@@ -14,9 +16,11 @@ class CNN():
         n_classes, 
         base_path,
         n_training_files,
-        n_validation_files):
+        n_validation_files,
+        test_data_path=None):
         self.train_data_path = train_data_path
         self.valid_data_path = valid_data_path
+        self.test_data_path = test_data_path
         self.learning_rate = learning_rate 
         self.image_size = image_size
         self.batch_size = batch_size
@@ -27,23 +31,28 @@ class CNN():
 
         self.global_step = tf.Variable(0, dtype=tf.int32, trainable=False, name='global_step')
         self.training = False
+        self.checkpoint_dir = base_path + '/checkpoints'
         convnet_path = '/checkpoints/cnn'
-        Path(base_path + '/checkpoints').mkdir(exist_ok=True)
+        Path(self.checkpoint_dir).mkdir(exist_ok=True)
         self.save_path = base_path + convnet_path
-        self.build()
 
 
-    def build(self):
-        self.set_data()
+    def build_for_training(self):
+        self.set_training_data()
         self.set_inference()
         self.set_loss()
         self.set_optimizer()
         self.set_validation()
         self.set_summary()
 
+
+    def build_for_testing(self):
+        self.set_testing_data()
+        self.set_inference()
+
     
-    def set_data(self):
-        with tf.name_scope('data'):
+    def set_training_data(self):
+        with tf.name_scope('training_data'):
             self.train_data = DatasetGenerator(
                 data_path=self.train_data_path, 
                 is_data_augmentation_enabled=True,
@@ -67,6 +76,24 @@ class CNN():
 
             self.train_initializer = iterator.make_initializer(self.train_data)
             self.valid_initializer = iterator.make_initializer(self.valid_data)
+
+        
+    def set_testing_data(self):
+        with tf.name_scope("data"):
+            data = DatasetGenerator(
+                data_path=self.test_data_path, 
+                is_data_augmentation_enabled=False, 
+                image_size=self.image_size,
+                image_channels=3,
+                batch_size=1
+            ).get_test_data()
+
+            iterator = tf.data.Iterator.from_structure(
+                data.output_types, 
+                data.output_shapes
+            )
+            self.image_input = iterator.get_next()
+            self.test_initializer = iterator.make_initializer(data)
 
 
     def set_inference(self):
@@ -127,7 +154,6 @@ class CNN():
                 name='dropout'
             )
             self.logits = tf.layers.dense(dropout, self.n_classes, name='logits')
-
 
     def set_loss(self):
         with tf.name_scope('loss'):
@@ -200,16 +226,43 @@ class CNN():
         
 
     def train(self, n_epochs):
+        self.build_for_training()
         writer = tf.summary.FileWriter(self.base_path + '/graphs', tf.get_default_graph())
 
         with tf.Session() as sess:
             sess.run(tf.global_variables_initializer())
             saver = tf.train.Saver()
+            ckpt = tf.train.get_checkpoint_state(self.checkpoint_dir)
+            if ckpt and ckpt.model_checkpoint_path:
+                saver.restore(sess, ckpt.model_checkpoint_path)
 
             step = self.global_step.eval()
 
-            for epoch in range(n_epochs):
+            for epoch in range(10, 20):
                 step = self.train_epoch(epoch+1, sess, saver, writer, step, n_epochs)
                 self.valid_epoch(epoch+1, sess, writer, step, n_epochs)
-        
+
+            saver.save(sess, self.save_path)
         writer.close()
+
+
+    def test(self, submission_filename=None):
+        self.training = False
+        self.build_for_testing()
+
+        n_test_images = number_of_testing_images(self.test_data_path)
+        labels = get_labels(self.train_data_path)
+        predictions = np.empty([n_test_images, len(labels)])
+        with tf.Session() as sess:
+            sess.run(tf.global_variables_initializer())
+            sess.run(self.test_initializer)
+            saver = tf.train.Saver()
+            ckpt = tf.train.get_checkpoint_state(self.checkpoint_dir)
+            if ckpt and ckpt.model_checkpoint_path:
+                saver.restore(sess, ckpt.model_checkpoint_path)
+
+            for i in range(n_test_images):
+                predictions[i] = sess.run(self.logits)
+
+        if submission_filename:
+            create_submission_file(predictions, submission_filename, labels, self.test_data_path)
